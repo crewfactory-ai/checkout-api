@@ -1,0 +1,31 @@
+name: image
+
+on:
+  push:
+    tags: ["rev-*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run the tests
+        run: >
+          docker run --rm -v "$PWD:/src" -w /src docker.io/library/python:3.14.10-slim-trixie
+          sh -c 'pip install -q -r requirements-dev.txt && ruff check --no-cache . && python -m pytest -q -p no:cacheprovider'
+      - name: Build and push the image
+        env:
+          TAG: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$TAG"
+          docker build -t "$image" \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" .
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker push "$image"
