@@ -77,3 +77,11 @@ def test_an_unexpected_error_answers_500_and_writes_an_error_row(server, monkeyp
     line = log_lines(capsys, lambda x: x.get("status") == 500)[-1]
     assert line["exception"] == "RuntimeError: boom"
     assert line["frame"].startswith("tests/test_app.py:")
+
+
+def test_each_request_logs_its_duration(server, capsys):
+    port, _ = server
+    call(port, "GET", "/healthz")
+    line = log_lines(capsys, lambda x: x.get("path") == "/healthz")[-1]
+    assert line["status"] == 200
+    assert isinstance(line["duration_ms"], float)

@@ -89,23 +89,25 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(payload, separators=(",", ":")).encode())
 
     def do_GET(self) -> None:
+        started = time.monotonic()
         if self.path == "/healthz":
             self._json(200, {"status": "ok"})
         elif self.path == "/metrics":
             self._send(200, prometheus_client.generate_latest(REGISTRY), prometheus_client.CONTENT_TYPE_LATEST)
         else:
             self._json(404, {"error": "not_found"})
-        self._log_request(200 if self.path in ("/healthz", "/metrics") else 404)
+        self._log_request(200 if self.path in ("/healthz", "/metrics") else 404, started)
 
     def do_POST(self) -> None:
+        started = time.monotonic()
         if self.path != "/pay":
             self._json(404, {"error": "not_found"})
-            self._log_request(404)
+            self._log_request(404, started)
             return
         status, payload, extra = self._pay()
         REQUESTS.labels(code=str(status), revision=REVISION).inc()
         self._json(status, payload)
-        self._log_request(status, **extra)
+        self._log_request(status, started, **extra)
 
     def _pay(self) -> tuple[int, dict, dict]:
         try:
@@ -138,13 +140,14 @@ class Handler(BaseHTTPRequestHandler):
         extra = {"order_id": order.order_id, "attempt": order.attempt}
         return 200, {"status": "paid", "order_id": order.order_id}, extra
 
-    def _log_request(self, status: int, **extra: object) -> None:
+    def _log_request(self, status: int, started: float, **extra: object) -> None:
         log(
             level="error" if status >= 500 else "info",
             method=self.command,
             path=self.path,
             status=status,
             revision=REVISION,
+            duration_ms=round((time.monotonic() - started) * 1000, 1),
             **extra,
         )
 
