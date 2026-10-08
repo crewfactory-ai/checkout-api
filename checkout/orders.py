@@ -50,15 +50,13 @@ class Order:
     attempt: int
 
 
-def _identifier(order: dict, name: str) -> str:
-    value = order.get(name)
-    if not isinstance(value, str) or not value or len(value) > MAX_ID_LENGTH:
+def _identifier(raw: object, name: str) -> str:
+    if not isinstance(raw, str) or not raw or len(raw) > MAX_ID_LENGTH:
         raise OrderError(f"{name} must be a text of 1 to {MAX_ID_LENGTH} characters")
-    return value
+    return raw
 
 
-def _amount(order: dict, currency_code: str) -> Decimal:
-    raw = order.get("amount")
+def _amount(raw: object, currency_code: str) -> Decimal:
     if isinstance(raw, bool) or not isinstance(raw, (str, int)):
         raise OrderError("amount must be a decimal text or an integer")
     try:
@@ -73,26 +71,25 @@ def _amount(order: dict, currency_code: str) -> Decimal:
     return amount
 
 
-def _attempt(order: dict) -> int:
-    attempt = order.get("attempt", 1)
-    if isinstance(attempt, bool) or not isinstance(attempt, int) or not 1 <= attempt <= MAX_ATTEMPT:
-        raise OrderError(f"attempt must be an integer from 1 to {MAX_ATTEMPT}")
-    return attempt
+def _attempt(raw: object) -> int:
+    if not isinstance(raw, bool) and isinstance(raw, int) and 1 <= raw <= MAX_ATTEMPT:
+        return raw
+    raise OrderError(f"attempt must be an integer from 1 to {MAX_ATTEMPT}")
+
+
+def _currency_code(raw: object) -> str:
+    if not isinstance(raw, str) or raw.upper() not in CURRENCIES:
+        raise OrderError("currency_code must be a currency that the provider accepts")
+    return raw.upper()
 
 
 def parse_order(order: dict) -> Order:
     """Check one request and return the order. Raise OrderError for an invalid request."""
-    order_id = _identifier(order, "order_id")
-    client_id = _identifier(order, "client_id")
-    # An older mobile client sends no currency_code. Its orders are in euro.
-    currency_code = order.get("currency_code", "EUR")
-    if not isinstance(currency_code, str) or currency_code.upper() not in CURRENCIES:
-        raise OrderError("currency_code must be a currency that the provider accepts")
-    currency_code = currency_code.upper()
+    currency_code = _currency_code(order["currency_code"])
     return Order(
-        order_id=order_id,
-        client_id=client_id,
-        amount=_amount(order, currency_code),
+        order_id=_identifier(order.get("order_id"), "order_id"),
+        client_id=_identifier(order.get("client_id"), "client_id"),
+        amount=_amount(order.get("amount"), currency_code),
         currency_code=currency_code,
-        attempt=_attempt(order),
+        attempt=_attempt(order.get("attempt", 1)),
     )
